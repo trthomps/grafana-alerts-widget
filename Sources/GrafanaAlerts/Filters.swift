@@ -45,15 +45,18 @@ struct FilterSettings: Equatable {
     var excludeFolders: [String]
     var excludeGroups: [String]
     var excludeRules: [String]
+    /// Rules hidden from the right-click menu, by UID (exact).
+    var hiddenRuleUIDs: Set<String>
     var includeLabels: [LabelMatcher]
     var excludeLabels: [LabelMatcher]
 
     static let none = FilterSettings(showPending: true, hideSilenced: false, minSeverity: .unknown,
                                      includeFolders: [], excludeFolders: [], excludeGroups: [], excludeRules: [],
-                                     includeLabels: [], excludeLabels: [])
+                                     hiddenRuleUIDs: [], includeLabels: [], excludeLabels: [])
 
     /// nil when the rule as a whole passes; otherwise why it's hidden.
     func ruleHiddenReason(_ rule: AlertRule) -> String? {
+        if hiddenRuleUIDs.contains(rule.uid) { return "Hidden rule" }
         if !includeFolders.isEmpty, !Glob.any(includeFolders, matches: rule.folder) { return "Folder \(rule.folder)" }
         if Glob.any(excludeFolders, matches: rule.folder) { return "Folder \(rule.folder)" }
         if Glob.any(excludeGroups, matches: rule.group) || Glob.any(excludeGroups, matches: "\(rule.folder)/\(rule.group)") {
@@ -82,6 +85,12 @@ struct FilterSettings: Equatable {
 enum Glob {
     static func any(_ patterns: [String], matches text: String) -> Bool {
         patterns.contains { matches($0, text) }
+    }
+
+    /// A pattern matching `text` exactly (as nearly as list syntax allows): commas would split
+    /// the list and `*`/`?` would act as wildcards, so each becomes `?` (any one character).
+    static func literal(_ text: String) -> String {
+        String(text.map { $0 == "," || $0 == "*" || $0 == "?" || $0.isNewline ? "?" : $0 })
     }
 
     static func matches(_ pattern: String, _ text: String) -> Bool {

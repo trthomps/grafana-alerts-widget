@@ -387,9 +387,11 @@ struct RuleMenu: View {
             }
         }
         Divider()
-        Button("Hide This Rule") { Prefs.append(rule.name, to: PrefKey.excludeRules) }
-        Button("Hide Folder “\(rule.folder)”") { Prefs.append(rule.folder, to: PrefKey.excludeFolders) }
-        Button("Hide Group “\(rule.group)”") { Prefs.append(rule.group, to: PrefKey.excludeGroups) }
+        Button("Hide This Rule") { Prefs.append(rule.uid, to: PrefKey.hiddenRuleUIDs) }
+        Button("Hide Folder “\(rule.folder)”") { Prefs.append(Glob.literal(rule.folder), to: PrefKey.excludeFolders) }
+        Button("Hide Group “\(rule.group)”") {
+            Prefs.append(Glob.literal("\(rule.folder)/\(rule.group)"), to: PrefKey.excludeGroups)
+        }
         Divider()
         Button("Copy Name") {
             NSPasteboard.general.clearContents()

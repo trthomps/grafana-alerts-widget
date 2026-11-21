@@ -163,6 +163,8 @@ private struct GeneralSettings: View {
     }
 
     private func setLaunchAtLogin(_ enabled: Bool) {
+        // Reverting the toggle after a failure re-enters here; don't undo what never happened.
+        guard enabled != (SMAppService.mainApp.status == .enabled) else { return }
         do {
             if enabled { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }
             loginError = nil
@@ -184,6 +186,7 @@ private struct AccountSettings: View {
     @State private var hasSecret = false
     @State private var message: String?
     @State private var serverEdit: Task<Void, Never>?
+    @State private var userEdit: Task<Void, Never>?
 
     private var base: URL? { CredentialProvider.normalizedServer(serverURL) }
 
@@ -274,7 +277,15 @@ private struct AccountSettings: View {
     private var basicSection: some View {
         Section {
             TextField("Username", text: $basicUser)
-                .onChange(of: basicUser) { _, _ in store.accountChanged() }
+                .onChange(of: basicUser) { _, _ in
+                    // Wait for a pause: each change re-signs in with the saved password.
+                    userEdit?.cancel()
+                    userEdit = Task {
+                        try? await Task.sleep(for: .milliseconds(800))
+                        guard !Task.isCancelled else { return }
+                        store.accountChanged()
+                    }
+                }
             SecureField("Password", text: $secretDraft, prompt: Text(hasSecret ? "•••••••• (saved)" : ""))
             HStack {
                 if hasSecret {
@@ -338,6 +349,7 @@ private struct FilterSettingsView: View {
     @AppStorage(PrefKey.excludeFolders) private var excludeFolders = ""
     @AppStorage(PrefKey.excludeGroups) private var excludeGroups = ""
     @AppStorage(PrefKey.excludeRules) private var excludeRules = ""
+    @AppStorage(PrefKey.hiddenRuleUIDs) private var hiddenRuleUIDs = ""
     @AppStorage(PrefKey.includeLabels) private var includeLabels = ""
     @AppStorage(PrefKey.excludeLabels) private var excludeLabels = ""
 
@@ -369,10 +381,19 @@ private struct FilterSettingsView: View {
                 TextField("Only these folders", text: $includeFolders, prompt: Text("everything"))
                 TextField("Hide folders", text: $excludeFolders, prompt: Text("Staging, Experiments*"))
                 chips(store.rules.map(\.folder), excluded: Prefs.patterns(PrefKey.excludeFolders)) {
-                    append($0, to: &excludeFolders)
+                    append(Glob.literal($0), to: &excludeFolders)
                 }
                 TextField("Hide groups", text: $excludeGroups, prompt: Text("noisy-checks, Folder/group"))
+                note("A bare group name hides it in every folder; `Folder/group` hides just that one.")
                 TextField("Hide rules named", text: $excludeRules, prompt: Text("Watchdog, *test*"))
+                if !hiddenRuleUIDs.isEmpty {
+                    HStack {
+                        let count = Prefs.patterns(PrefKey.hiddenRuleUIDs).count
+                        Text("\(count) rule\(count == 1 ? "" : "s") hidden from the menu")
+                        Spacer()
+                        Button("Unhide") { hiddenRuleUIDs = "" }
+                    }
+                }
             } header: {
                 Text("Folders, groups and rules")
             }
@@ -437,7 +458,7 @@ private struct FilterSettingsView: View {
         showPending = false
         hideSilenced = true
         minSeverity = Severity.unknown.rawValue
-        includeFolders = ""; excludeFolders = ""; excludeGroups = ""; excludeRules = ""
+        includeFolders = ""; excludeFolders = ""; excludeGroups = ""; excludeRules = ""; hiddenRuleUIDs = ""
         includeLabels = ""; excludeLabels = ""
     }
 }

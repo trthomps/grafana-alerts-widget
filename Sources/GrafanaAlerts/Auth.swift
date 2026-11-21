@@ -83,10 +83,29 @@ enum CredentialProvider {
 enum SecretStore {
     static let service = "io.github.trthomps.grafana-alerts"
 
+    /// Uses `-g` rather than `-w`: `-w` prints non-ASCII secrets as bare hex, which can't be told
+    /// apart from a secret that happens to be hex. `-g` prints `password: "text"` or, for
+    /// non-printable bytes, `password: 0x<hex>  "<escaped>"`.
     static func read(_ account: String) -> String? {
-        let (status, output) = run(["find-generic-password", "-s", service, "-a", account, "-w"])
+        let (status, output) = run(["find-generic-password", "-s", service, "-a", account, "-g"], stderrToOutput: true)
         guard status == 0 else { return nil }
-        return output.nonEmpty
+        guard let line = output.split(separator: "\n").first(where: { $0.hasPrefix("password: ") }) else { return nil }
+        let value = line.dropFirst("password: ".count)
+        if value.hasPrefix("0x") {
+            let hex = value.dropFirst(2).prefix { $0.isHexDigit }
+            guard hex.count % 2 == 0 else { return nil }
+            var bytes = [UInt8]()
+            var index = hex.startIndex
+            while index < hex.endIndex {
+                let next = hex.index(index, offsetBy: 2)
+                guard let byte = UInt8(hex[index..<next], radix: 16) else { return nil }
+                bytes.append(byte)
+                index = next
+            }
+            return String(bytes: bytes, encoding: .utf8)?.nonEmpty
+        }
+        guard value.hasPrefix("\""), value.hasSuffix("\""), value.count >= 2 else { return nil }
+        return String(value.dropFirst().dropLast()).nonEmpty
     }
 
     /// The secret goes over stdin (hex-encoded), so it never shows up in a process listing.
@@ -106,13 +125,13 @@ enum SecretStore {
         text.filter { $0 != "\"" && $0 != "\\" && !$0.isNewline }
     }
 
-    private static func run(_ arguments: [String], stdin: String? = nil) -> (Int32, String) {
+    private static func run(_ arguments: [String], stdin: String? = nil, stderrToOutput: Bool = false) -> (Int32, String) {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/security")
         process.arguments = arguments
         let out = Pipe()
         process.standardOutput = out
-        process.standardError = FileHandle.nullDevice
+        process.standardError = stderrToOutput ? out : FileHandle.nullDevice
         let input = Pipe()
         if stdin != nil { process.standardInput = input }
         do { try process.run() } catch { return (-1, "") }

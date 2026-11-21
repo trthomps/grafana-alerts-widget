@@ -8,7 +8,11 @@ enum AlertState: String, Codable, Comparable, CaseIterable {
     /// "Recovering", "Normal", "NoData", "Error".
     init(instance raw: String) {
         let lower = raw.lowercased()
-        if lower.hasPrefix("alerting") || lower.hasPrefix("firing") { self = .firing }
+        // Plain "NoData"/"Error" means the rule's no-data/error handling is set to that state:
+        // Grafana still notifies (DatasourceNoData / DatasourceError), so treat them as firing.
+        if lower.hasPrefix("alerting") || lower.hasPrefix("firing") || lower == "nodata" || lower == "error" {
+            self = .firing
+        }
         else if lower.hasPrefix("recovering") { self = .recovering }
         else if lower.hasPrefix("pending") { self = .pending }
         else { self = .normal }

@@ -32,7 +32,7 @@ If nothing is configured, the app falls back to the `GRAFANA_URL` and `GRAFANA_S
 ## Using it
 
 - **Click** the icon to see the list. Each row is an alert rule: its state, name, the rendered summary, folder › group, instance count, severity, and how long it has been active. Click a row to open the rule in Grafana. Click the chevron to see each instance's summary and the labels that set it apart.
-- **Right-click a row** (or an instance) to open its runbook or dashboard panel, silence it for 1 hour, 4 hours, 1 day or 1 week, hide its rule, folder or group, or copy its name or labels.
+- **Right-click a row** (or an instance) to open its runbook or dashboard panel, silence it for 1 hour, 4 hours, 1 day or 1 week, hide it (the exact rule, its folder, or its group within that folder), or copy its name or labels.
 - **Right-click the icon** for Refresh, Open Firing Alerts / Silences in Browser, Settings and Quit.
 - **Terminal**: `GrafanaAlerts --print` prints what the menu bar would show, with your filters applied.
 
@@ -80,9 +80,9 @@ GRAFANA_ALERTS_DEBUG=1 "build/Grafana Alerts.app/Contents/MacOS/GrafanaAlerts"  
 
 The behavior that has to carry over:
 
-1. **Rules**: `GET {base}/api/prometheus/grafana/api/v1/rules?state=firing&state=pending&state=recovering` with `Authorization: Bearer <token>`. Grafana filters both rules and their `alerts[]` to those states. Walk `data.groups[]`, where `file` is the folder title and `name` is the group, then `rules[]`, which has `uid`, `name`, `state`, `health`, `labels`, `annotations` and `alerts[]`. Skip rules whose `type` isn't `alerting`.
-2. **Instance state**: `alerts[].state` is `Alerting`, `Alerting (NoData)`, `Alerting (Error)`, `Pending`, `Recovering` or `Normal`. Anything starting with `Alerting` is firing, and the text in parentheses is shown as a chip. `activeAt` can have nanoseconds, or be `0001-01-01…` when unset.
-3. **Silences**: `GET {base}/api/alertmanager/grafana/api/v2/alerts?active=true&silenced=true&inhibited=true`. Entries with `status.state == "suppressed"` are silenced or inhibited. Match them to instances by `labels.__alert_rule_uid__` plus the sorted labels that don't start with `__`. If this call fails, carry on and show a warning.
+1. **Rules**: `GET {base}/api/prometheus/grafana/api/v1/rules?state=firing&state=pending&state=recovering&state=nodata&state=error` with `Authorization: Bearer <token>`. Grafana filters both rules and their `alerts[]` to those states. Walk `data.groups[]`, where `file` is the folder title and `name` is the group, then `rules[]`, which has `uid`, `name`, `state`, `health`, `labels`, `annotations` and `alerts[]`. Skip rules whose `type` isn't `alerting`. Older Grafana versions return 400 `unknown state '…'` for states they don't have. Retry without `recovering`, then with only `firing` and `pending`.
+2. **Instance state**: `alerts[].state` is `Alerting`, `Alerting (NoData)`, `Alerting (Error)`, `Pending`, `Recovering` or `Normal`. `Alerting…`, plain `NoData` and plain `Error` count as firing (Grafana still notifies for the last two). The parenthesized or plain NoData/Error text is shown as a chip. `activeAt` can have nanoseconds, or be `0001-01-01…` when unset.
+3. **Silences**: `GET {base}/api/alertmanager/grafana/api/v2/alerts?active=true&silenced=true&inhibited=true`. Entries with `status.state == "suppressed"` are silenced or inhibited. Match them to instances by `labels.__alert_rule_uid__` plus the sorted labels that don't start with `__`. If this call fails, keep the previous poll's silence state and skip banners for that poll.
 4. **Silence action**: `POST {base}/api/alertmanager/grafana/api/v2/silences` with matchers `__alert_rule_uid__=<uid>`, plus every non-`__` label when silencing a single instance.
 5. **Count**: rules (or instances) that are firing or recovering, not silenced, and pass the filters. The badge color comes from the worst `severity` among them.
 6. **Banners**: diff the counted instance IDs (`ruleUID|labelKey`) against the previous poll. Don't post on the first poll, and reset the baseline when filters change.

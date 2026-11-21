@@ -148,6 +148,8 @@ final class AlertStore: ObservableObject {
         version = nil
         error = nil
         silenceWarning = nil
+        serverURL = nil
+        credentialSource = nil
         Task { await refresh(userInitiated: true) }
     }
 
@@ -201,24 +203,29 @@ final class AlertStore: ObservableObject {
             }
             guard started == generation else { return }
 
-            if let suppressed {
-                for r in fetched.indices {
-                    for i in fetched[r].instances.indices {
-                        fetched[r].instances[i].silenced = suppressed.contains(fetched[r].instances[i].id)
-                    }
+            // If Alertmanager didn't answer, keep the last known silence state rather than
+            // flipping every silenced alert back to firing (and announcing it).
+            let silenced = suppressed ?? Set(rules.flatMap(\.instances).filter(\.silenced).map(\.id))
+            for r in fetched.indices {
+                for i in fetched[r].instances.indices {
+                    fetched[r].instances[i].silenced = silenced.contains(fetched[r].instances[i].id)
                 }
-                silenceWarning = nil
-            } else {
-                silenceWarning = "Couldn't read silences from Alertmanager, so silenced alerts show as firing."
             }
+            silenceWarning = suppressed == nil
+                ? "Couldn't read silences from Alertmanager; showing the last known silences." : nil
             rules = fetched
             lastFetched = Date()
             error = nil
             applyFilters()
-            if version == nil { version = try? await api.version() }
-            guard started == generation else { return }
-            announce(quiet: quiet)
+            // Without silence info, newly silenced alerts would look new: wait for the next poll.
+            // (On the very first poll, still record the baseline so nothing is announced later as new.)
+            if suppressed != nil { announce(quiet: quiet) } else if !hasLoadedOnce { announced = currentlyActive() }
             hasLoadedOnce = true
+            if version == nil {
+                let fetchedVersion = try? await api.version()
+                guard started == generation else { return }
+                version = fetchedVersion
+            }
         } catch is CancellationError {
             return
         } catch let failure as GrafanaError {
@@ -311,12 +318,12 @@ final class AlertStore: ObservableObject {
             SystemNotifier.postFiring(items, baseURL: serverURL)
         }
         if Prefs.notifyResolved {
-            // Only alerts whose rule we still know about and that really stopped, not ones a
-            // rule-level change (deleted rule, account switch) made disappear.
+            // The rules query only returns rules with firing/pending instances, so a rule that
+            // vanished from the response has resolved entirely. One that's still there only
+            // resolved if the instance is no longer active (rather than silenced or filtered).
             let liveRules = Dictionary(uniqueKeysWithValues: rules.map { ($0.uid, $0) })
             let gone = announced.filter { current[$0.key] == nil }.map(\.value).filter { instance in
                 guard let rule = liveRules[instance.ruleUID] else { return true }
-                // Still there but silenced or filtered: not resolved.
                 return !rule.instances.contains { $0.id == instance.id && $0.state.isActive }
             }
             let byRule = Dictionary(grouping: gone, by: \.ruleUID)

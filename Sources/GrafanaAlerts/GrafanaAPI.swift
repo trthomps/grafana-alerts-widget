@@ -13,10 +13,30 @@ struct GrafanaAPI {
 
     // MARK: - Rules
 
+    /// Most to least complete. Grafana answers 400 "unknown state" for a state it doesn't have
+    /// (`recovering` is recent; `nodata`/`error` arrived in 10.x), so step down until one works.
+    private static let stateSets: [[String]] = [
+        ["firing", "pending", "recovering", "nodata", "error"],
+        ["firing", "pending", "nodata", "error"],
+        ["firing", "pending"],
+    ]
+    /// Which entry of `stateSets` each server accepts.
+    @MainActor private static var acceptedStateSet: [URL: Int] = [:]
+
     func activeRules() async throws -> [AlertRule] {
-        let response: RulesResponse = try await get("api/prometheus/grafana/api/v1/rules", query: [
-            "state": ["firing", "pending", "recovering"],
-        ])
+        var index = await MainActor.run { Self.acceptedStateSet[credential.baseURL] ?? 0 }
+        var response: RulesResponse
+        while true {
+            do {
+                response = try await get("api/prometheus/grafana/api/v1/rules", query: ["state": Self.stateSets[index]])
+                break
+            } catch GrafanaError.http(400, let detail) where index + 1 < Self.stateSets.count
+                && (detail ?? "").localizedCaseInsensitiveContains("state") {
+                index += 1
+            }
+        }
+        let accepted = index
+        await MainActor.run { Self.acceptedStateSet[credential.baseURL] = accepted }
         var rules: [AlertRule] = []
         for group in response.data.groups {
             for rule in group.rules where rule.type == nil || rule.type == "alerting" {
@@ -52,8 +72,10 @@ struct GrafanaAPI {
         return rules
     }
 
-    /// "Alerting (NoData)" → "NoData".
+    /// "Alerting (NoData)" → "NoData"; plain "NoData" / "Error" → themselves.
     private static func reason(_ state: String) -> String? {
+        if state.caseInsensitiveCompare("NoData") == .orderedSame { return "NoData" }
+        if state.caseInsensitiveCompare("Error") == .orderedSame { return "Error" }
         guard let open = state.firstIndex(of: "("), let close = state.lastIndex(of: ")"), open < close else { return nil }
         return String(state[state.index(after: open)..<close]).nonEmpty
     }

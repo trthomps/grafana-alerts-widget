@@ -48,6 +48,7 @@ enum PrefKey {
     static let excludeFolders = "filterExcludeFolders"
     static let excludeGroups = "filterExcludeGroups"
     static let excludeRules = "filterExcludeRules"
+    static let hiddenRuleUIDs = "filterHiddenRuleUIDs"
     static let includeLabels = "filterIncludeLabels"
     static let excludeLabels = "filterExcludeLabels"
     static let showHidden = "showHiddenInList"
@@ -78,6 +79,7 @@ enum Prefs {
             PrefKey.excludeFolders: "",
             PrefKey.excludeGroups: "",
             PrefKey.excludeRules: "",
+            PrefKey.hiddenRuleUIDs: "",
             PrefKey.includeLabels: "",
             PrefKey.excludeLabels: "",
             PrefKey.showHidden: false,
@@ -107,6 +109,7 @@ enum Prefs {
             excludeFolders: patterns(PrefKey.excludeFolders),
             excludeGroups: patterns(PrefKey.excludeGroups),
             excludeRules: patterns(PrefKey.excludeRules),
+            hiddenRuleUIDs: Set(patterns(PrefKey.hiddenRuleUIDs)),
             includeLabels: patterns(PrefKey.includeLabels).compactMap(LabelMatcher.init),
             excludeLabels: patterns(PrefKey.excludeLabels).compactMap(LabelMatcher.init)
         )
