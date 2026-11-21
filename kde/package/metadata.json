@@ -1,0 +1,18 @@
+{
+    "KPackageStructure": "Plasma/Applet",
+    "KPlugin": {
+        "Authors": [
+            {
+                "Name": "Travis Thompson"
+            }
+        ],
+        "Category": "System Information",
+        "Description": "Firing Grafana alerts, with a severity-colored badge, silencing, and filters",
+        "Icon": "dialog-warning",
+        "Id": "dev.grafanaalerts.plasmoid",
+        "License": "MIT",
+        "Name": "Grafana Alerts",
+        "Version": "1.0"
+    },
+    "X-Plasma-API-Minimum-Version": "6.0"
+}

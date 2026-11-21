@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kcfg xmlns="http://www.kde.org/standards/kcfg/1.0"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="http://www.kde.org/standards/kcfg/1.0 http://www.kde.org/standards/kcfg/1.0/kcfg.xsd">
+  <kcfgfile name=""/>
+  <group name="General">
+    <!-- color | monochrome -->
+    <entry name="iconColor" type="String"><default>color</default></entry>
+    <!-- badge | number | dot | none -->
+    <entry name="badgeStyle" type="String"><default>badge</default></entry>
+    <!-- Critical red, warning orange, info blue; off: always red -->
+    <entry name="severityColors" type="Bool"><default>true</default></entry>
+    <!-- rules | instances -->
+    <entry name="countMode" type="String"><default>rules</default></entry>
+    <entry name="dimWhenEmpty" type="Bool"><default>true</default></entry>
+    <!-- Seconds between fetches (minimum 15) -->
+    <entry name="refreshInterval" type="Int"><default>60</default></entry>
+    <entry name="notifyFiring" type="Bool"><default>true</default></entry>
+    <entry name="notifyResolved" type="Bool"><default>false</default></entry>
+    <entry name="showHidden" type="Bool"><default>false</default></entry>
+  </group>
+  <group name="Account">
+    <!-- token | basic | none -->
+    <entry name="authMode" type="String"><default>token</default></entry>
+    <!-- The token or password itself is in the Secret Service -->
+    <entry name="serverURL" type="String"><default></default></entry>
+    <entry name="basicUser" type="String"><default></default></entry>
+  </group>
+  <group name="Filters">
+    <entry name="filterShowPending" type="Bool"><default>false</default></entry>
+    <entry name="filterHideSilenced" type="Bool"><default>true</default></entry>
+    <!-- 0 any, 1 info, 2 warning, 3 critical -->
+    <entry name="filterMinSeverity" type="Int"><default>0</default></entry>
+    <!-- Comma- or newline-separated, case-insensitive, * globs -->
+    <entry name="filterIncludeFolders" type="String"><default></default></entry>
+    <entry name="filterExcludeFolders" type="String"><default></default></entry>
+    <entry name="filterExcludeGroups" type="String"><default></default></entry>
+    <entry name="filterExcludeRules" type="String"><default></default></entry>
+    <!-- Rule UIDs hidden from the right-click menu (exact) -->
+    <entry name="filterHiddenRuleUIDs" type="String"><default></default></entry>
+    <!-- key=value, key!=value, or a bare value -->
+    <entry name="filterIncludeLabels" type="String"><default></default></entry>
+    <entry name="filterExcludeLabels" type="String"><default></default></entry>
+  </group>
+  <group name="Cache">
+    <!-- For the settings pages, as of the last refresh: {"folders": [...], "labels": [...], "shown": n, "hidden": n, "reasons": [...]}. No secrets. -->
+    <entry name="listStats" type="String"><default></default></entry>
+  </group>
+</kcfg>

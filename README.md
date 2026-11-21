@@ -1,11 +1,16 @@
 # Grafana Alerts
 
-A macOS menu bar app for Grafana-managed alerts. It shows a badge with the number of firing alerts, a list you can click through to Grafana, a right-click menu to silence alerts, macOS banners when alerts start firing, and filters so only the alerts you care about count.
+Grafana-managed alerts at a glance: a badge with the number of firing alerts, a list you can click through to Grafana, a right-click menu to silence alerts, notifications when alerts start firing, and filters so only the alerts you care about count. It comes in two versions with the same features and design:
+
+- **macOS**: a menu bar app (Swift, in `Sources/`).
+- **KDE Plasma 6 on Linux**: a panel or system tray widget that also works on the desktop (QML, in [`kde/`](kde/README.md)). See [KDE Plasma](#kde-plasma).
 
 ![Menu bar styles, light](docs/menubar-light.png)
 ![Menu bar styles, dark](docs/menubar-dark.png)
 
 ## Install
+
+### macOS
 
 Requires macOS 14+ and the Xcode Command Line Tools (`xcode-select --install`).
 
@@ -15,7 +20,17 @@ make install      # builds "Grafana Alerts.app", copies it to ~/Applications, la
 
 `make app` builds into `build/` without installing. Opening the app again from Spotlight or Finder brings up Settings, which helps when a menu bar manager has hidden the item.
 
-## Signing in
+### KDE Plasma (Linux)
+
+Requires Plasma 6 and `secret-tool` (in `libsecret`).
+
+```sh
+make kde-install  # installs the widget for your user with kpackagetool6
+```
+
+Then right-click a panel or the desktop → **Add Widgets…** → **Grafana Alerts**. More in [KDE Plasma](#kde-plasma) below.
+
+## Signing in on macOS
 
 Settings → Account takes your Grafana URL (pasting any Grafana page URL works; the path is stripped) and one of:
 
@@ -29,7 +44,7 @@ Secrets are stored in the login Keychain through `/usr/bin/security`. They're pi
 
 If nothing is configured, the app falls back to the `GRAFANA_URL` and `GRAFANA_SERVICE_ACCOUNT_TOKEN` (or `GRAFANA_API_KEY`) environment variables, which `mcp-grafana` also uses. This helps with `--print`.
 
-## Using it
+## Using it on macOS
 
 - **Click** the icon to see the list. Each row is an alert rule: its state, name, the rendered summary, folder › group, instance count, severity, and how long it has been active. Click a row to open the rule in Grafana. Click the chevron to see each instance's summary and the labels that set it apart.
 - **Right-click a row** (or an instance) to open its runbook or dashboard panel, silence it for 1 hour, 4 hours, 1 day or 1 week, hide it (the exact rule, its folder, or its group within that folder), or copy its name or labels.
@@ -49,13 +64,28 @@ Banners are on by default for alerts that start firing, grouped per rule (a rule
 
 ## Filters
 
-Settings → Filters decides what shows, counts and notifies. Nothing changes in Grafana.
+The same in both versions. Settings → Filters (Configure… → Filters on KDE) decides what shows, counts and notifies. Nothing changes in Grafana.
 
 - **State**: show pending alerts (listed, never counted), hide silenced and inhibited alerts (on by default), minimum severity (alerts without a `severity` label always show).
 - **Folders, groups and rules**: an allow-list and a block-list of folders, plus hidden groups and rule names. One-click "Hide" buttons appear for the folders currently firing.
 - **Labels**: *Only alerts with* and *Hide alerts with*, written as `key=value`, `key!=value`, or a bare `value` that matches any label. One-click buttons offer the labels on current alerts.
 
 All lists are comma-separated, case-insensitive, and accept `*` globs. Label filters apply to each instance. A rule appears when at least one of its instances passes, and the row says how many instances were filtered out. The popover footer shows how many rules are hidden and can show them inline.
+
+## KDE Plasma
+
+The Plasma widget is a port of the macOS app: the same list, badge styles, severity colors, silencing and filters, drawn with Plasma's own theme.
+
+![Popup](docs/kde-popup.png)
+
+- **In a panel or the system tray**: the Grafana icon with a badge, a number, a dot, or nothing, in Grafana colors or monochrome. **Click** for the list, **middle-click** to refresh, **right-click** for Refresh Now, Open Firing Alerts / Silences in Browser and Configure.
+- **In the list**: click a rule to open it in Grafana, click the chevron for its instances. **Right-click** a rule or instance to open its runbook or dashboard panel, silence it, hide it, or copy its name or labels.
+- **On the desktop**: the list itself. Resize and move it like any Plasma widget.
+- **Settings** (right-click → Configure): appearance and notifications, account, and the same filters as the macOS app, with one-click Hide buttons for the folders and labels on current alerts.
+
+Signing in works the same way (service account token, username & password, or no auth, with the `GRAFANA_URL` fallback), except that secrets go into your keyring (KWallet or GNOME Keyring) with `secret-tool`: Settings shows the command to run in a terminal, which prompts for the secret so it never appears in shell history or a process listing.
+
+Desktop notifications go through Plasma's notification system. After upgrading, restart Plasma to load the new version (`systemctl --user restart plasma-plasmashell`). `make kde-uninstall` removes it. Details are in [`kde/README.md`](kde/README.md).
 
 ## Development
 
@@ -76,9 +106,11 @@ GRAFANA_ALERTS_DEBUG=1 "build/Grafana Alerts.app/Contents/MacOS/GrafanaAlerts"  
 | `Logo.swift`, `GrafanaIconPath.swift`, `SVGPath.swift` | Grafana icon (drawn from its SVG path), menu bar renderer, app icon |
 | `StatusItemController.swift`, `PopoverView.swift`, `SettingsView.swift` | UI |
 
-## Porting notes (for the Plasma 6 version)
+The KDE widget lives in `kde/package` (a standard Plasma applet package). Its parsing, filter and list logic in `kde/package/contents/code/grafana.js` mirrors `Models.swift`, `Filters.swift`, `GrafanaAPI.swift` and `AlertStore.swift`, so a change to one usually needs the same change in the other. `make kde-test` runs its tests under Node. [`kde/README.md`](kde/README.md) has the file map.
 
-The behavior that has to carry over:
+## API notes
+
+The behavior both versions implement:
 
 1. **Rules**: `GET {base}/api/prometheus/grafana/api/v1/rules?state=firing&state=pending&state=recovering&state=nodata&state=error` with `Authorization: Bearer <token>`. Grafana filters both rules and their `alerts[]` to those states. Walk `data.groups[]`, where `file` is the folder title and `name` is the group, then `rules[]`, which has `uid`, `name`, `state`, `health`, `labels`, `annotations` and `alerts[]`. Skip rules whose `type` isn't `alerting`. Older Grafana versions return 400 `unknown state '…'` for states they don't have. Retry without `recovering`, then with only `firing` and `pending`.
 2. **Instance state**: `alerts[].state` is `Alerting`, `Alerting (NoData)`, `Alerting (Error)`, `Pending`, `Recovering` or `Normal`. `Alerting…`, plain `NoData` and plain `Error` count as firing (Grafana still notifies for the last two). The parenthesized or plain NoData/Error text is shown as a chip. `activeAt` can have nanoseconds, or be `0001-01-01…` when unset.
