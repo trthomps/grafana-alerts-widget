@@ -9,11 +9,13 @@ struct LabelMatcher: Equatable {
     init?(_ text: String) {
         let text = text.trimmingCharacters(in: .whitespaces)
         guard !text.isEmpty else { return nil }
-        if let range = text.range(of: "!=") {
+        // Split on whichever operator comes first, so `expr=a!=b` is key `expr`, value `a!=b`.
+        let equals = text.range(of: "=")
+        if let range = text.range(of: "!="), let equals, range.lowerBound < equals.lowerBound {
             key = String(text[..<range.lowerBound]).trimmingCharacters(in: .whitespaces)
             value = String(text[range.upperBound...]).trimmingCharacters(in: .whitespaces)
             negated = true
-        } else if let range = text.range(of: "=") {
+        } else if let range = equals {
             key = String(text[..<range.lowerBound]).trimmingCharacters(in: .whitespaces)
             value = String(text[range.upperBound...]).trimmingCharacters(in: .whitespaces)
             negated = false

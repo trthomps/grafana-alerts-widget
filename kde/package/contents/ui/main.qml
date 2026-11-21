@@ -33,7 +33,7 @@ PlasmoidItem {
     /// Bumped when the account changes so in-flight results for the old one are dropped.
     property int generation: 0
     property bool refreshQueued: false
-    /// Which entry of G.STATE_SETS each server accepts: base → index.
+    /// Which entry of G.STATE_SETS each server accepted, and when: base → { index, at }.
     property var acceptedStateSet: ({})
     /// Rules whose instances are expanded in the list, by UID. Lives here so it survives the popup closing.
     property var expandedRules: ({})
@@ -240,14 +240,14 @@ PlasmoidItem {
         const attempt = index => request(cred, "GET", "api/prometheus/grafana/api/v1/rules", { state: G.STATE_SETS[index] })
             .then(text => {
                 const sets = Object.assign({}, acceptedStateSet)
-                sets[cred.baseURL] = index
+                sets[cred.baseURL] = { index: index, at: Date.now() }
                 acceptedStateSet = sets
                 return G.parseRules(text)
             }, err => {
                 if (G.shouldStepDown(err, index)) return attempt(index + 1)
                 throw err
             })
-        return attempt(acceptedStateSet[cred.baseURL] || 0)
+        return attempt(G.stateSetIndex(acceptedStateSet[cred.baseURL], Date.now()))
     }
 
     /// Silenced/inhibited instance IDs, or null if Alertmanager didn't answer.
@@ -280,7 +280,10 @@ PlasmoidItem {
                 Qt.callLater(() => refresh(true))
             }
         }
-        currentCredential().then(cred => {
+        // Re-read the keyring every poll (it's cheap), so a removed or replaced secret takes effect.
+        loadCredential().then(cred => {
+            if (started !== generation) throw G.apiError("cancelled")
+            credential = cred
             credentialSource = cred.source
             return Promise.all([fetchRules(cred), fetchSuppressed(cred)]).then(results => {
                 if (started !== generation) return
@@ -297,14 +300,15 @@ PlasmoidItem {
                 // (On the very first poll, still record the baseline so nothing is announced later as new.)
                 if (suppressed !== null) announce()
                 else if (!hasLoadedOnce) announced = G.currentlyActive(shown)
+                if (!hasLoadedOnce) writeStats()
                 hasLoadedOnce = true
                 if (!version) loadVersion(cred, started)
             })
         }).catch(err => {
             if (started !== generation || err.kind === "cancelled") return
             console.warn("grafana-alerts: refresh failed:", err.kind, err.detail || err.message)
-            // Re-read the keyring next time.
-            if (err.kind === "unauthorized" || err.kind === "notConfigured") credential = null
+            // Without a credential (it was removed, or the keyring failed) nothing else may use the old one.
+            if (err.kind === "notConfigured" || err.kind === "keyring" || err.kind === "unauthorized") credential = null
             error = G.errorInfo(err.kind ? err : G.apiError("network", String(err)))
         }).then(finish)
     }
@@ -450,22 +454,27 @@ PlasmoidItem {
 
     // MARK: - Stats for the settings pages (folder/label suggestions, hidden reasons)
 
-    function saveStats() {
+    /// Written to the applet's config (the only place the settings pages can read), so at most once
+    /// a minute, and only when something changed.
+    function saveStats() { if (!statsTimer.running) statsTimer.start() }
+
+    Timer {
+        id: statsTimer
+        interval: 60000
+        onTriggered: root.writeStats()
+    }
+
+    function writeStats() {
         const values = G.suggestionValues(rules)
         const text = JSON.stringify({
             folders: G.topCounts(values.folders, [], 40),
             labels: G.topCounts(values.labels, [], 40),
             shown: shown.length,
             hidden: hidden.length,
-            reasons: G.topReasons(hidden),
-            server: serverURL,
-            version: version,
-            source: credentialSource
+            reasons: G.topReasons(hidden)
         })
         if (text !== cfg.listStats) cfg.listStats = text
     }
-
-    onVersionChanged: saveStats()
 
     // MARK: - Timers
 

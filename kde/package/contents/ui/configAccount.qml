@@ -18,6 +18,7 @@ KCM.SimpleKCM {
     readonly property string secretName: cfg_authMode === "basic" ? i18n("password") : i18n("token")
     /// null while unknown, else whether the keyring has a secret for this server and mode.
     property var hasSecret: null
+    property string keyringError: ""
     property var env: null
     property string status: ""
     property bool statusOK: false
@@ -49,12 +50,19 @@ KCM.SimpleKCM {
         onTriggered: {
             const account = page.account
             if (!page.server || page.cfg_authMode === "none") { page.hasSecret = null; return }
-            shell.lookupSecret(account).then(s => { if (account === page.account) page.hasSecret = s !== "" })
+            shell.lookupSecret(account).then(s => {
+                if (account !== page.account) return
+                page.keyringError = ""
+                page.hasSecret = s !== ""
+            }, err => {
+                if (account === page.account) page.keyringError = err.detail
+            })
         }
     }
 
     function refreshSecretState() {
         hasSecret = null
+        keyringError = ""
         secretTimer.restart()
     }
 
@@ -246,7 +254,8 @@ KCM.SimpleKCM {
                 visible: page.hasSecret !== null
             }
             QQC2.Label {
-                text: page.hasSecret === null ? i18n("Checking the keyring…")
+                text: page.keyringError ? page.keyringError
+                    : page.hasSecret === null ? i18n("Checking the keyring…")
                     : page.hasSecret ? i18n("A %1 is stored for this server.", page.secretName)
                     : i18n("No %1 stored for this server yet.", page.secretName)
             }

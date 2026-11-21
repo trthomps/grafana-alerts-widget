@@ -27,7 +27,7 @@ KCM.SimpleKCM {
     readonly property var folderChips: (stats.folders || [])
         .filter(c => !G.globAny(G.patterns(cfg_filterExcludeFolders), c.value)).slice(0, 8)
     readonly property var labelChips: (stats.labels || [])
-        .filter(c => G.patterns(cfg_filterExcludeLabels).indexOf(c.value) < 0).slice(0, 8)
+        .filter(c => G.patterns(cfg_filterExcludeLabels).indexOf(G.labelLiteral(c.value)) < 0).slice(0, 8)
 
     function reset() {
         cfg_filterShowPending = false
@@ -178,7 +178,7 @@ KCM.SimpleKCM {
         Chips {
             Kirigami.FormData.label: i18n("Hide:")
             values: page.labelChips
-            onPicked: value => page.cfg_filterExcludeLabels = G.appendPattern(page.cfg_filterExcludeLabels, value)
+            onPicked: value => page.cfg_filterExcludeLabels = G.appendPattern(page.cfg_filterExcludeLabels, G.labelLiteral(value))
         }
         Note {
             text: i18n("key=value or key!=value; a bare value matches any label. Comma-separated, case-insensitive, * matches anything. “Only” passes alerts matching any one entry; “Hide” drops alerts matching any one. Label filters apply to each instance: a rule shows when at least one of its instances passes.")

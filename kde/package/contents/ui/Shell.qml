@@ -33,10 +33,15 @@ P5Support.DataSource {
 
     readonly property string secretService: "io.github.trthomps.grafana-alerts"
 
-    /// Resolves to the stored secret, or "" if there isn't one.
+    /// Resolves to the stored secret, or "" if there isn't one. Rejects (kind "keyring") when
+    /// secret-tool is missing, times out on a locked keyring, or fails.
     function lookupSecret(account) {
         return run("secret-tool lookup service " + G.shellQuote(secretService) + " account " + G.shellQuote(account))
-            .then(r => r.code === 0 ? G.cleanSecret(r.stdout) : "")
+            .then(r => {
+                const err = G.keyringError(r.code, r.stderr)
+                if (err) throw err
+                return r.code === 0 ? G.cleanSecret(r.stdout) : ""
+            })
     }
 
     /// For the user to run in a terminal: secret-tool prompts for the secret, so it never lands in

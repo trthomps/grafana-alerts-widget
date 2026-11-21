@@ -179,6 +179,16 @@ var STATE_SETS = [
     ["firing", "pending"]
 ];
 
+/// How long a stepped-down state list is trusted before trying the full one again (Grafana may
+/// have been upgraded).
+var STATE_SET_RETRY = 60 * 60 * 1000;
+
+/// Which STATE_SETS index to start with, given the cached { index, at } for the server.
+function stateSetIndex(cached, now) {
+    if (!cached || now - cached.at >= STATE_SET_RETRY) return 0;
+    return cached.index;
+}
+
 /// Whether a rules request that failed with `err` should be retried with STATE_SETS[index + 1].
 function shouldStepDown(err, index) {
     return index + 1 < STATE_SETS.length && err && err.kind === "http" && err.status === 400
@@ -306,6 +316,12 @@ function globAny(list, text) {
 /// and `*`/`?` would act as wildcards, so each becomes `?` (any one character).
 function globLiteral(text) { return String(text).replace(/[,*?\r\n]/g, "?"); }
 
+/// A `key=value` pattern matching that label exactly: the value is escaped like globLiteral.
+function labelLiteral(pair) {
+    var i = pair.indexOf("=");
+    return i < 0 ? globLiteral(pair) : globLiteral(pair.slice(0, i)) + "=" + globLiteral(pair.slice(i + 1));
+}
+
 /// `key=value` or `key!=value`, where value is a glob. A bare `value` matches any label's value.
 function parseMatcher(text) {
     var t = String(text).trim();
@@ -313,7 +329,8 @@ function parseMatcher(text) {
     var m;
     var i = t.indexOf("!=");
     var j = t.indexOf("=");
-    if (i >= 0) m = { key: t.slice(0, i).trim(), value: t.slice(i + 2).trim(), negated: true };
+    // Split on whichever operator comes first, so `expr=a!=b` is key `expr`, value `a!=b`.
+    if (i >= 0 && i < j) m = { key: t.slice(0, i).trim(), value: t.slice(i + 2).trim(), negated: true };
     else if (j >= 0) m = { key: t.slice(0, j).trim(), value: t.slice(j + 1).trim(), negated: false };
     else m = { key: null, value: t, negated: false };
     if (m.key === "") return null;
@@ -389,6 +406,9 @@ function makeItem(rule, instances, hiddenInstances, hiddenReason) {
         ? Math.max.apply(null, instances.map(function (i) { return severity(i.labels.severity); }))
         : severity(rule.labels.severity);
     var times = instances.map(function (i) { return i.activeAt; }).filter(function (t) { return t !== null; });
+    var worst = instances.reduce(function (w, i) {
+        return w === null || severity(i.labels.severity) > severity(w.labels.severity) ? i : w;
+    }, null);
     var reasonInst = instances.filter(function (i) { return i.reason !== null; })[0];
     return {
         id: rule.uid,
@@ -398,7 +418,7 @@ function makeItem(rule, instances, hiddenInstances, hiddenReason) {
         hiddenReason: hiddenReason,
         state: state,
         severity: sev,
-        severityLabel: (instances.length && instances[0].labels.severity) || rule.labels.severity || null,
+        severityLabel: (worst && worst.labels.severity) || rule.labels.severity || null,
         reason: reasonInst ? reasonInst.reason : null,
         since: times.length ? Math.min.apply(null, times) : null,
         latest: times.length ? Math.max.apply(null, times) : null,
@@ -591,11 +611,12 @@ var errorText = {
         "The token can't read alert rules. A Viewer service account is enough to read; silencing needs Editor."],
     http: ["Server error", "The server returned an error."],
     network: ["Can't reach Grafana", "The request failed."],
-    decoding: ["Unexpected response", "Couldn't read the server's response."]
+    decoding: ["Unexpected response", "Couldn't read the server's response."],
+    keyring: ["Keyring problem", "Couldn't read the keyring."]
 };
 
 var errorIcon = {
-    notConfigured: "user-identity", unauthorized: "object-locked", forbidden: "object-locked",
+    notConfigured: "user-identity", keyring: "object-locked", unauthorized: "object-locked", forbidden: "object-locked",
     network: "network-disconnect"
 };
 
@@ -651,6 +672,15 @@ function base64UTF8(s) {
 }
 
 function basicAuth(user, password) { return "Basic " + base64UTF8(user + ":" + password); }
+
+/// The error for a `secret-tool lookup` that exited with `code`, or null if it ran (0) or found
+/// nothing (1).
+function keyringError(code, stderr) {
+    if (code === 0 || code === 1) return null;
+    if (code === 127) return apiError("keyring", "secret-tool isn't installed. It comes with libsecret (libsecret-tools on Debian/Ubuntu).");
+    if (code === 124) return apiError("keyring", "The keyring didn't answer in time. Is it locked?");
+    return apiError("keyring", nonEmpty(stderr) || "secret-tool failed (exit " + code + ").");
+}
 
 /// secret-tool prints the secret as stored; drop only the newline it may add.
 function cleanSecret(s) { return String(s || "").replace(/\r?\n$/, ""); }

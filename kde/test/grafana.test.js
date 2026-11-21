@@ -145,7 +145,10 @@ test("glob and matchers", () => {
     assert.ok(m("team!=infra"));
     assert.ok(m("BUILD-01"));       // bare value, any label, case-insensitive
     assert.strictEqual(G.parseMatcher("=x"), null);
-    eq(G.parseMatcher("a=b!=c"), { key: "a=b", value: "c", negated: true });
+    eq(G.parseMatcher("expr=a!=b"), { key: "expr", value: "a!=b", negated: false });
+    eq(G.parseMatcher("a!=b=c"), { key: "a", value: "b=c", negated: true });
+    assert.strictEqual(G.labelLiteral("msg=disk a,b*"), "msg=disk a?b?");
+    assert.ok(G.matcherMatches(G.parseMatcher(G.labelLiteral("msg=disk a,b")), { msg: "disk a,b" }));
     assert.strictEqual(G.matcherText(G.parseMatcher(" env != dev ")), "env!=dev");
     assert.strictEqual(G.appendPattern("a, B", "b"), "a, B");
     assert.strictEqual(G.appendPattern("", "x"), "x");
@@ -285,6 +288,30 @@ test("formatting", () => {
     assert.strictEqual(G.duration(7 * 86400), "1 week");
     assert.strictEqual(G.severityTint(2), "warning");
     assert.strictEqual(G.severityTint(0), "critical");
+});
+
+test("severity label comes from the worst instance", () => {
+    const r = G.parseRules(response([group([rule({ alerts: [
+        alert({ labels: { host: "a", severity: "warning" } }), alert({ labels: { host: "b", severity: "critical" } })] })])]));
+    const item = G.partition(r, config()).shown[0];
+    assert.strictEqual(item.instances[0].labels.host, "a");
+    assert.strictEqual(item.severityLabel, "critical");
+    assert.strictEqual(item.severity, 3);
+});
+
+test("keyring errors", () => {
+    assert.strictEqual(G.keyringError(0, ""), null);
+    assert.strictEqual(G.keyringError(1, ""), null);
+    assert.strictEqual(G.keyringError(127, "").kind, "keyring");
+    assert.ok(/locked/.test(G.keyringError(124, "").detail));
+    assert.strictEqual(G.keyringError(2, "boom\n").detail, "boom");
+    assert.strictEqual(G.errorInfo(G.keyringError(127, "")).title, "Keyring problem");
+});
+
+test("state set cache expires", () => {
+    assert.strictEqual(G.stateSetIndex(undefined, now), 0);
+    assert.strictEqual(G.stateSetIndex({ index: 2, at: now - 60e3 }, now), 2);
+    assert.strictEqual(G.stateSetIndex({ index: 2, at: now - 61 * 60e3 }, now), 0);
 });
 
 console.log(`${pass} tests passed`);
