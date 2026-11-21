@@ -87,3 +87,7 @@ The behavior that has to carry over:
 5. **Count**: rules (or instances) that are firing or recovering, not silenced, and pass the filters. The badge color comes from the worst `severity` among them.
 6. **Banners**: diff the counted instance IDs (`ruleUID|labelKey`) against the previous poll. Don't post on the first poll, and reset the baseline when filters change.
 7. **Links**: rule `{base}/alerting/grafana/{uid}/view`, firing list `{base}/alerting/list?search=state:firing`, silences `{base}/alerting/silences`, runbook `annotations.runbook_url`, panel `/d/{__dashboardUid__}?viewPanel={__panelId__}`.
+
+## License
+
+[MIT](LICENSE). The Grafana logo is a trademark of Grafana Labs and is not covered by this license. This project is not affiliated with Grafana Labs.
